@@ -5,3 +5,4 @@ dist/
 coverage/
 .release/
 *.tgz
+.DS_Store

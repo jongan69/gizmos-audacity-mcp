@@ -4,6 +4,7 @@
 import { currentProcessIdentity } from './app-process.js';
 import { tracksInfo } from './audacity/info.js';
 import { preflightLabelCreation, setLabels } from './audacity/labels.js';
+import { repairMacWavExport } from './audacity/mac-wav.js';
 import { requireMenuState, STATEFUL_MENUS } from './audacity/menu-state.js';
 import { NoiseProfile } from './audacity/noise.js';
 import { preflightCommand } from './audacity/policy.js';
@@ -99,7 +100,7 @@ export class Ops {
         return this.raw(command, timeoutMs);
       });
     this.noise.invalidate(id, params);
-    return id === 'Import2' ? this.importWithoutTempoDetection(command, timeoutMs) : this.raw(command, timeoutMs);
+    return this.executeNative(id, params, command, timeoutMs);
   }
 
   /** A catalogue command (effects included), validated against Audacity's own parameter list. */
@@ -111,7 +112,19 @@ export class Ops {
     }
     if (needsEffectContext(id)) return this.guardedEffect(id, params, command, timeoutMs);
     this.noise.invalidate(id, params);
-    return id === 'Import2' ? this.importWithoutTempoDetection(command, timeoutMs) : this.raw(command, timeoutMs);
+    return this.executeNative(id, params, command, timeoutMs);
+  }
+
+  private async executeNative(
+    id: string,
+    params: Record<string, unknown>,
+    command: string,
+    timeoutMs?: number,
+  ): Promise<string> {
+    if (id === 'Import2') return this.importWithoutTempoDetection(command, timeoutMs);
+    const body = await this.raw(command, timeoutMs);
+    if (id === 'Export2' && typeof params.Filename === 'string') await repairMacWavExport(params.Filename);
+    return body;
   }
 
   private async guardedEffect(

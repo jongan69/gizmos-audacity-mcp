@@ -88,10 +88,7 @@ export async function audacityProcesses(owners = true): Promise<AudacityProcess[
     const output = await capture('ps', ['-axo', 'pid=,uid=,lstart=,comm=']);
     return output.split('\n').flatMap((line) => {
       const match = /^\s*(\d+)\s+(\d+)\s+(.{24})\s+(.+?)\s*$/.exec(line);
-      if (
-        !match ||
-        !/(?:^|\/)audacity(?:$|\.app\/)|Audacity\.app\/Contents\/MacOS\/(?:Wrapper|Audacity)$/i.test(match[4]!)
-      )
+      if (!match || !/(?:^|\/)audacity$|Audacity\.app\/Contents\/MacOS\/(?:Wrapper|Audacity)$/i.test(match[4]!))
         return [];
       return [
         {
@@ -204,6 +201,20 @@ export function pipeExists(): boolean {
 }
 
 export async function executableVersion(file = audacityExe()): Promise<string> {
+  if (process.platform === 'darwin' && /\/Contents\/MacOS\/(?:Wrapper|Audacity)$/.test(file)) {
+    // Running --version while the macOS app is open invokes its single-instance
+    // handler instead of returning a version. Read the installed bundle metadata.
+    return (
+      await capture('/usr/bin/plutil', [
+        '-extract',
+        'CFBundleShortVersionString',
+        'raw',
+        '-o',
+        '-',
+        resolve(file, '..', '..', 'Info.plist'),
+      ])
+    ).trim();
+  }
   if (process.platform === 'win32') {
     // An empty FileVersion falls back to ProductVersion, so a 4.x build is still recognized.
     const info = `(Get-Item -LiteralPath '${file.replaceAll("'", "''")}').VersionInfo`;
@@ -212,7 +223,7 @@ export async function executableVersion(file = audacityExe()): Promise<string> {
     ).replaceAll(',', '.');
   }
   const output = await capture(file, ['--version']);
-  const version = /\b(\d+\.\d+\.\d+)\b/.exec(output)?.[1];
+  const version = /\bv?(\d+\.\d+\.\d+)\b/.exec(output)?.[1];
   if (!version) throw new Error('Cannot determine Audacity version');
   return version;
 }

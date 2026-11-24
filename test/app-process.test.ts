@@ -41,6 +41,31 @@ function child() {
   });
 }
 describe('actual process evidence', () => {
+  it('does not count the macOS crash reporter as a second Audacity instance', async () => {
+    platform('darwin');
+    mocks.readlink.mockImplementation(() => {
+      throw new Error('No procfs on macOS');
+    });
+    const process = child();
+    mocks.spawn.mockReturnValue(process);
+    const result = audacityProcesses();
+    process.stdout.write(
+      ' 42 501 Fri Oct  9 20:00:00 2026 /Applications/Audacity.app/Contents/MacOS/Audacity\n' +
+        ' 43 501 Fri Oct  9 20:00:00 2026 /Applications/Audacity.app/Contents/MacOS/crashpad_handler\n',
+    );
+    process.emit('close', 0);
+    expect((await result).map(({ pid }) => pid)).toEqual([42]);
+  });
+  it('reads a running macOS bundle version without starting another instance', async () => {
+    platform('darwin');
+    const process = child();
+    mocks.spawn.mockReturnValue(process);
+    const result = executableVersion('/Applications/Audacity.app/Contents/MacOS/Wrapper');
+    process.stdout.write('3.7.9.0\n');
+    process.emit('close', 0);
+    expect(await result).toBe('3.7.9.0');
+    expect(mocks.spawn).toHaveBeenCalledWith('/usr/bin/plutil', expect.any(Array), expect.any(Object));
+  });
   it('reads measured executable/start/user and binds a unique epoch', async () => {
     platform('win32');
     mocks.helper.mockResolvedValue(
@@ -138,6 +163,12 @@ describe('actual process evidence', () => {
     process.stdout.write('Audacity 3.7.8');
     process.emit('close', 0);
     expect(await result).toBe('3.7.8');
+    const prefixed = child();
+    mocks.spawn.mockReturnValue(prefixed);
+    const macVersion = executableVersion('/Audacity');
+    prefixed.stdout.write('Audacity v3.7.9\n');
+    prefixed.emit('close', 0);
+    expect(await macVersion).toBe('3.7.9');
     const next = child();
     mocks.spawn.mockReturnValue(next);
     const unknown = executableVersion('/Audacity');
